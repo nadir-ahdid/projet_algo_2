@@ -37,3 +37,4 @@ DblpPublicationGenerator$LocalDtdEntityResolver.class
 DblpPublicationGenerator$Publication.class
 DblpPublicationGenerator.class
 .idea
+data.csv
