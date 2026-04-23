@@ -108,18 +108,12 @@ public class DblpParsingDemo {
                             if (!author1AlreadyExist) {
                                 tree.put(author1, author1);
                                 sizes.put(author1, 1);
-//                        System.out.println("Author : " + author1 + " size = " + sizes.get(author1));
-//                        System.out.println("Author alone");
-                            } else {
-//                        System.out.println(author1 + " already exists");
                             }
                         }
                         for (String author2 : others) {
                             union(author1, author2, tree, sizes);
                         }
                         count++;
-//                System.out.println(count);
-//                System.out.println("------------------------------------");
                     }
                     exporterCSV(sizes);
                 }
@@ -167,21 +161,96 @@ public class DblpParsingDemo {
                             }
                         }
                     }
-                    long totalEdges = relations.values().stream()
-                            .mapToLong(Map::size)
-                            .sum();
-                    System.out.println("Nombre total de relations orientées identifiées : " + totalEdges);
+                    relations.values().forEach(voisins -> voisins.entrySet().removeIf(entry -> entry.getValue() < 6));
+                    relations.entrySet().removeIf(entry -> entry.getValue().isEmpty());
 
-                    System.out.println("--- Top 10 des collaborateurs les plus fréquents (A -> B) ---");
+                    HashMap<String, List<String>> graph = new HashMap<>();
 
-                    relations.entrySet().stream()
-                            .flatMap(entry -> entry.getValue().entrySet().stream()
-                                    .map(subEntry -> new AbstractMap.SimpleEntry<>(entry.getKey() + " -> " + subEntry.getKey(), subEntry.getValue())))
-                            .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-                            .limit(10)
-                            .forEach(e -> System.out.println(e.getKey() + " : " + e.getValue() + " publications communes"));
+                    for (Map.Entry<String, HashMap<String, Integer>> entry : relations.entrySet()) {
+                        String A = entry.getKey();
+                        graph.putIfAbsent(A, new ArrayList<>());
+
+                        for (String B : entry.getValue().keySet()) {
+                            graph.get(A).add(B);
+                        }
+                    }
+                    List<List<String>> result = kosaraju(graph);
+                    System.out.println(result);
                 }
         }
+    }
+
+    public static void fillOrder(String author, Set<String> alreadyVisited, Stack<String> stack, HashMap<String, List<String>> graph) {
+        alreadyVisited.add(author);
+
+        // regarde les voisins de l'auteur pour continuer le dfs récursivement
+        for (String s : graph.getOrDefault(author, List.of())) {
+            if (!alreadyVisited.contains(s)) {
+                fillOrder(s, alreadyVisited, stack, graph);
+            }
+        }
+
+        stack.push(author);
+    }
+
+    public static HashMap<String, List<String>> reverseGraph(HashMap<String, List<String>> graph) {
+        HashMap<String, List<String>> reversed = new HashMap<>();
+
+        for (String u : graph.keySet()) {
+            reversed.putIfAbsent(u, new ArrayList<>());
+
+            for (String v : graph.get(u)) {
+                reversed.putIfAbsent(v, new ArrayList<>());
+                reversed.get(v).add(u);
+            }
+        }
+
+        return reversed;
+    }
+
+    public static void dfs(String node, Set<String> visited,
+                           HashMap<String, List<String>> graph,
+                           List<String> component) {
+
+        visited.add(node);
+        component.add(node);
+
+        for (String neighbor : graph.getOrDefault(node, List.of())) {
+            if (!visited.contains(neighbor)) {
+                dfs(neighbor, visited, graph, component);
+            }
+        }
+    }
+
+    public static List<List<String>> kosaraju(HashMap<String, List<String>> graph) {
+
+        Stack<String> stack = new Stack<>();
+        Set<String> visited = new HashSet<>();
+
+        //dfs sur tous les auteurs
+        for (String node : graph.keySet()) {
+            if (!visited.contains(node)) {
+                fillOrder(node, visited, stack, graph);
+            }
+        }
+
+        HashMap<String, List<String>> reversed = reverseGraph(graph);
+
+        visited.clear();
+        List<List<String>> sccs = new ArrayList<>();
+
+        while (!stack.isEmpty()) {
+            String node = stack.pop();
+
+            if (!visited.contains(node)) {
+                List<String> component = new ArrayList<>();
+                dfs(node, visited, reversed, component);
+                sccs.add(component);
+            }
+        }
+        //Permet de retirer les communautés de taille 1 pour plus de visibilité
+        sccs.removeIf(scc -> scc.size() == 1);
+        return sccs;
     }
 
     public static String find(String i, HashMap<String, String> tree, HashMap<String, Integer> sizes) {
@@ -207,38 +276,29 @@ public class DblpParsingDemo {
     public static void union(String author1, String author2, HashMap<String, String> tree, HashMap<String, Integer> sizes) {
         if (!tree.containsKey(author2)) {
             String root1 = find(author1, tree, sizes);
+
             tree.put(author2, root1);
             sizes.put(root1, sizes.get(root1) + 1);
 
-//            System.out.println("Author " + author2 + " was new, directly attached to " + root1);
-//            System.out.println("_______");
             return;
         }
 
         if (!tree.containsKey(author1)) {
             String root2 = find(author2, tree, sizes);
+
             tree.put(author1, root2);
             sizes.put(root2, sizes.get(root2) + 1);
 
-//            System.out.println("Author " + author1 + " was new, directly attached to " + root2);
-//            System.out.println("_______");
             return;
         }
 
         String root1 = find(author1, tree, sizes);
         String root2 = find(author2, tree, sizes);
-//        System.out.println("Root for " + author1 + "= " + root1);
-//        System.out.println("Root for " + author2 + "= " + root2);
 
         if (!root1.equals(root2)) {
-//            System.out.println("Already in the same community");
-//            System.out.println("After link");
-//            System.out.println("Author : " + root1 + " size : " + sizes.get(root1));
             int size1 = sizes.get(root1);
             int size2 = sizes.get(root2);
-//            System.out.println("Before link");
-//            System.out.println("Author : " + root1 + " size : " + size1);
-//            System.out.println("Author : " + root2 + " size : " + size2);
+
             if (size1 >= size2) {
                 tree.put(root2, root1);
                 sizes.put(root1, size1+size2);
@@ -248,11 +308,7 @@ public class DblpParsingDemo {
                 sizes.put(root2, size1+size2);
                 sizes.remove(root1);
             }
-
-//            System.out.println("After link");
-//            System.out.println("Author : " + root1 + " size : " + sizes.get(root1));
         }
-//        System.out.println("_______");
     }
 
     public static void exporterCSV(HashMap<String, Integer> tailles) throws IOException {
