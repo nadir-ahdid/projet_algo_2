@@ -64,21 +64,37 @@ public class DblpParsingDemo {
         switch (choice) {
             case "1":
                 long pubCount = 0;
-                long count = 0;
+                long count = 0; // Compteur local pour déclencher un affichage périodique
+                // Structures de données pour gérer l'algorithme Union-Find
+                // tree permet de stocker l'arbre des parents (qui appartient à la communauté de qui).
                 HashMap<String, String> tree = new HashMap<>();
+                // sizes permet de garder en mémoire la taille de la communauté de chaque racine.
                 HashMap<String, Integer> sizes = new HashMap<>();
 
+                // --------------------------------------------------------------------
+                // On crée le générateur DBLP dans un try-with-resources :
+                //   - le constructeur démarre un thread de parsing en arrière-plan ;
+                //   - les publications "parsé(e)s" sont déposées dans une file (queue) ;
+                //   - gen.nextPublication() consomme cette file au fur et à mesure.
+                //
+                // Le try-with-resources garantit que gen.close() est appelé à la fin,
+                // ce qui permet d'arrêter proprement le thread de parsing et de libérer
+                // les ressources.
+                // --------------------------------------------------------------------
                 try (DblpPublicationGenerator gen = new DblpPublicationGenerator(xmlPath, dtdPath, 256)) {
                     // Boucle de consommation : on traite les publications une par une,
                     // jusqu'à atteindre la limite (si fournie) ou la fin du fichier.
                     while (pubCount < limit) {
+                        // Toutes les 10 000 opérations de traitement de co-auteurs,
+                        // on affiche des statistiques en temps réel pour suivre l'évolution.
                         if (count == 10000) {
                             System.out.println("Le nombre de communautés est de " + sizes.size());
+                            // Trie les communautés par taille décroissante et affiche les 10 plus grandes
                             sizes.entrySet().stream()
                                     .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
                                     .limit(10)
                                     .forEach(e -> System.out.println("La communauté de " + e.getKey() + " contient " + e.getValue() + " auteurs"));
-                            count = 0;
+                            count = 0; // Réinitialise le compteur d'affichage
                         }
 
                         // nextPublication() renvoie :
@@ -102,19 +118,26 @@ public class DblpParsingDemo {
 
                         // autres auteurs (peut être vide si k == 1)
                         List<String> others = (k > 1) ? authors.subList(1, k) : List.of();
+
+                        // Cas où l'auteur a publié seul (pas de co-auteurs sur cet article)
                         if (others.isEmpty()) {
                             boolean author1AlreadyExist = tree.containsKey(author1);
 
+                            // S'il n'existe pas encore dans notre structure, on l'ajoute
+                            // comme étant la racine d'une nouvelle communauté de taille 1.
                             if (!author1AlreadyExist) {
                                 tree.put(author1, author1);
                                 sizes.put(author1, 1);
                             }
                         }
+                        // S'il y a des co-auteurs, on fusionne la communauté du premier auteur
+                        // avec les communautés de tous les autres auteurs de la publication.
                         for (String author2 : others) {
                             union(author1, author2, tree, sizes);
                         }
-                        count++;
+                        count++; // On incrémente le compteur de traitements pour l'affichage périodique
                     }
+                    // À la toute fin du traitement, on sauvegarde les résultats dans un fichier CSV.
                     exporterCSV(sizes);
                 }
             case "2":
@@ -253,60 +276,109 @@ public class DblpParsingDemo {
         return sccs;
     }
 
+    /**
+     * Recherche le représentant (la racine) de la communauté à laquelle appartient un auteur.
+     * Si l'auteur n'existe pas encore dans la structure, il est créé en tant que racine de sa propre communauté.
+     * <p>
+     * Cette méthode implémente une optimisation d'aplatissement appelée "Compression de chemin"
+     * (Path Compression). Lorsqu'on cherche la racine pour un auteur, on met à jour son parent
+     * pour qu'il pointe directement vers cette racine. Cela accélère considérablement les
+     * prochaines recherches pour cet auteur.
+     * </p>
+     *
+     * @param i     Le nom de l'auteur dont on cherche la communauté.
+     * @param tree  La structure Union-Find représentant l'arbre des parents (clé : auteur, valeur : parent).
+     * @param sizes La map qui associe la racine d'une communauté à sa taille (nombre d'auteurs).
+     * @return Le nom de l'auteur qui est à la racine de la communauté (le représentant).
+     */
     public static String find(String i, HashMap<String, String> tree, HashMap<String, Integer> sizes) {
         boolean alreadyExist = tree.containsKey(i);
 
+        // Cas initial : L'auteur n'est pas encore enregistré.
+        // On l'ajoute à la structure comme étant sa propre racine (une communauté de 1 personne).
         if (!alreadyExist) {
-            tree.put(i, i);
-            sizes.put(i, 1);
-            return i;
+            tree.put(i, i);       // Il est son propre parent
+            sizes.put(i, 1);      // Sa communauté a une taille de 1
+            return i;             // Il est forcément la racine
         }
+
         String current = i;
-        // Tant que l'on n'est pas à la racine on continue à remonter l'arbre
+
+        // Parcours de l'arbre vers le haut :
+        // Un nœud est une racine si son parent est lui-même.
+        // Tant que le parent du nœud courant n'est pas le nœud courant, on continue de monter.
         while (!tree.get(current).equals(current)) {
             current = tree.get(current);
         }
-        String root = current;
 
-        // Permet de ne plus devoir faire tout le chemin pour remonter l'arbre la prochaine fois
+        String root = current; // On a trouvé la racine absolue de la communauté
+
+        // Optimisation (Compression de chemin) :
+        // On modifie le parent direct de l'auteur "i" pour pointer directement sur la racine trouvée.
+        // Cela permet de ne plus devoir refaire tout le chemin de la branche lors du prochain appel find(i).
         tree.replace(i, root);
+
         return root;
     }
 
+    /**
+     * Fusionne les ensembles (communautés) de deux auteurs en utilisant la structure de données Union-Find.
+     * <p>
+     * Cette méthode implémente l'optimisation "Union par taille" (Union by size).
+     * Lorsqu'elle relie deux ensembles existants, elle attache toujours la racine
+     * de l'arbre le plus petit à la racine de l'arbre le plus grand. Cela permet de
+     * garder des arbres peu profonds et d'optimiser les futures opérations de recherche.
+     * </p>
+     *
+     * @param author1 Le nom du premier auteur.
+     * @param author2 Le nom du deuxième auteur (le collaborateur).
+     * @param tree    La structure Union-Find représentant l'arbre des parents (clé : auteur, valeur : parent de l'auteur).
+     * @param sizes   La map qui associe la racine d'une communauté au nombre total d'auteurs qu'elle contient.
+     */
     public static void union(String author1, String author2, HashMap<String, String> tree, HashMap<String, Integer> sizes) {
+
+        // Cas 1 : L'auteur 2 est un nouvel auteur qui n'est pas encore dans la structure.
+        // On l'ajoute directement à la communauté de l'auteur 1 sans avoir à chercher sa propre racine.
         if (!tree.containsKey(author2)) {
             String root1 = find(author1, tree, sizes);
 
-            tree.put(author2, root1);
-            sizes.put(root1, sizes.get(root1) + 1);
+            tree.put(author2, root1); // La racine de author1 devient le parent de author2
+            sizes.put(root1, sizes.get(root1) + 1); // La communauté s'agrandit d'une personne
 
             return;
         }
 
+        // Cas 2 : L'auteur 1 est un nouvel auteur.
+        // On fait l'inverse : on l'ajoute directement à la communauté de l'auteur 2.
         if (!tree.containsKey(author1)) {
             String root2 = find(author2, tree, sizes);
 
-            tree.put(author1, root2);
-            sizes.put(root2, sizes.get(root2) + 1);
+            tree.put(author1, root2); // La racine de author2 devient le parent de author1
+            sizes.put(root2, sizes.get(root2) + 1); // La communauté s'agrandit d'une personne
 
             return;
         }
 
+        // Cas 3 : Les deux auteurs existent déjà dans la structure.
+        // On cherche le représentant (la racine) de la communauté de chacun.
         String root1 = find(author1, tree, sizes);
         String root2 = find(author2, tree, sizes);
 
+        // Si les deux racines sont différentes, cela signifie qu'ils appartiennent
+        // à deux communautés distinctes qu'il faut maintenant fusionner.
         if (!root1.equals(root2)) {
             int size1 = sizes.get(root1);
             int size2 = sizes.get(root2);
 
+            // Optimisation (Union par taille) : on accroche l'arbre le plus petit sous la racine du plus grand.
             if (size1 >= size2) {
-                tree.put(root2, root1);
-                sizes.put(root1, size1+size2);
-                sizes.remove(root2);
+                tree.put(root2, root1); // La racine 2 est subordonnée à la racine 1
+                sizes.put(root1, size1 + size2); // La nouvelle racine globale (root1) prend la somme des deux tailles
+                sizes.remove(root2); // La racine 2 n'est plus une racine principale, on retire son entrée des tailles
             } else {
-                tree.put(root1, root2);
-                sizes.put(root2, size1+size2);
-                sizes.remove(root1);
+                tree.put(root1, root2); // La racine 1 est subordonnée à la racine 2
+                sizes.put(root2, size1 + size2); // La nouvelle racine globale (root2) prend la somme des deux tailles
+                sizes.remove(root1); // La racine 1 n'est plus une racine principale, on retire son entrée des tailles
             }
         }
     }
