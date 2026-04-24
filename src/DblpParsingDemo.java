@@ -178,11 +178,18 @@ public class DblpParsingDemo {
                     HashMap<String, List<String>> graph = createGraph(relations);
 
                     List<List<String>> result = kosarajuSharir(graph);
-                    List<List<String>> resultTop10 = result.stream().sorted(Comparator.comparingInt(List::size)).limit(10).toList();
+
+                    // Permet de récupérer les 10 premières communautés
+                    List<List<String>> resultTop10 = result.stream()
+                            .sorted((l1, l2) -> Integer.compare(l2.size(), l1.size()))
+                            .limit(10)
+                            .toList();
 
                     for (List<String> community : resultTop10) {
                         int taille = community.size();
                         int diametre = calculerDiametre(community, graph);
+                        System.out.println(taille);
+                        System.out.println(diametre);
                     }
                 }
         }
@@ -258,6 +265,7 @@ public class DblpParsingDemo {
         visited.clear();
         List<List<String>> sccs = new ArrayList<>();
 
+        //On refait un dfs mais pour le graphe inversé. Ce qui permet de savoir s'il y a à la fois une relation auteur1 -> auteur2 et auteur2 -> auteur1.
         while (!deque.isEmpty()) {
             String node = deque.pop();
 
@@ -272,6 +280,15 @@ public class DblpParsingDemo {
         return sccs;
     }
 
+
+    /**
+     * Remplit l'ordre de visite via un dfs. C'est la première phase de l'algorithme Kosaraju
+     *
+     * @param author         Auteur actuel du parcours.
+     * @param alreadyVisited Ensemble des auteurs déjà visités.
+     * @param stack          Pile stockant les auteurs dans l'ordre.
+     * @param graph          Le graphe orienté représenté par une liste d'adjacence.
+     */
     public static void fillOrder(String author, Set<String> alreadyVisited, Deque<String> stack, HashMap<String, List<String>> graph) {
         alreadyVisited.add(author);
 
@@ -305,6 +322,14 @@ public class DblpParsingDemo {
         return reversed;
     }
 
+    /**
+     * Effectue un parcours DFS pour identifier tous les sommets pour un graphe inversé.
+     *
+     * @param node      Le sommet actuel du parcours.
+     * @param visited   Ensemble des sommets déjà visités.
+     * @param graph     Le graphe orienté inversé à parcourir.
+     * @param component Liste collectant les membres de la composante fortement connexe.
+     */
     public static void dfs(String node, Set<String> visited,
                            HashMap<String, List<String>> graph,
                            List<String> component) {
@@ -319,6 +344,13 @@ public class DblpParsingDemo {
         }
     }
 
+    /**
+     * Calcule le diamètre d'une communauté spécifique.
+     *
+     * @param communaute Liste des noms des auteurs de la communauté
+     * @param graph      Le graphe orienté.
+     * @return La valeur du diamètre qui correspond au nombre d'arêtes du chemin le plus long
+     */
     public static int calculerDiametre(List<String> communaute, HashMap<String, List<String>> graph) {
         int maxDiametre = 0;
         // On transforme la liste en Set pour une recherche en O(1)
@@ -331,6 +363,14 @@ public class DblpParsingDemo {
         return maxDiametre;
     }
 
+    /**
+     * Réalise un parcours BFS pour trouver la distance maximale entre un auteur et un autre de la communauté.
+     *
+     * @param depart  L'auteur actuel pour le calcul des distances.
+     * @param membres L'ensemble des membres de la communauté.
+     * @param graph   Le graphe orienté.
+     * @return La distance maximale trouvée depuis un auteur vers un autre auteur de la communauté.
+     */
     private static int bfsDistanceMax(String depart, Set<String> membres, HashMap<String, List<String>> graph) {
         Queue<String> file = new LinkedList<>();
         Map<String, Integer> distances = new HashMap<>();
@@ -344,10 +384,10 @@ public class DblpParsingDemo {
             int d = distances.get(u);
             distMax = Math.max(distMax, d);
 
+            //Renvoie une liste vide si on ne trouve pas l'auteur dans le graphe sinon il y a une erreur
             for (String v : graph.getOrDefault(u, List.of())) {
-                // CRUCIAL : On ne sort pas de la communauté
                 if (membres.contains(v) && !distances.containsKey(v)) {
-                    distances.put(v, d + 1);
+                    distances.put(v, d+1);
                     file.add(v);
                 }
             }
@@ -376,9 +416,9 @@ public class DblpParsingDemo {
         // Cas initial : L'auteur n'est pas encore enregistré.
         // On l'ajoute à la structure comme étant sa propre racine (une communauté de 1 personne).
         if (!alreadyExist) {
-            tree.put(i, i);       // Il est son propre parent
-            sizes.put(i, 1);      // Sa communauté a une taille de 1
-            return i;             // Il est forcément la racine
+            tree.put(i, i);
+            sizes.put(i, 1);
+            return i;
         }
 
         String current = i;
@@ -392,7 +432,6 @@ public class DblpParsingDemo {
 
         String root = current; // On a trouvé la racine absolue de la communauté
 
-        // Optimisation (Compression de chemin) :
         // On modifie le parent direct de l'auteur "i" pour pointer directement sur la racine trouvée.
         // Cela permet de ne plus devoir refaire tout le chemin de la branche lors du prochain appel find(i).
         tree.replace(i, root);
@@ -418,22 +457,24 @@ public class DblpParsingDemo {
 
         // Cas 1 : L'auteur 2 est un nouvel auteur qui n'est pas encore dans la structure.
         // On l'ajoute directement à la communauté de l'auteur 1 sans avoir à chercher sa propre racine.
+        // Cela permet d'éviter de créer une communauté pour l'auteur 2 qui va être détruite directement après car il appartient à l'auteur 1
         if (!tree.containsKey(author2)) {
             String root1 = find(author1, tree, sizes);
 
-            tree.put(author2, root1); // La racine de author1 devient le parent de author2
-            sizes.put(root1, sizes.get(root1) + 1); // La communauté s'agrandit d'une personne
+            tree.put(author2, root1);
+            sizes.put(root1, sizes.get(root1) + 1);
 
             return;
         }
 
         // Cas 2 : L'auteur 1 est un nouvel auteur.
         // On fait l'inverse : on l'ajoute directement à la communauté de l'auteur 2.
+        // Cela permet d'éviter de créer une communauté pour l'auteur 1 qui va être détruite directement après car il appartient à l'auteur 2
         if (!tree.containsKey(author1)) {
             String root2 = find(author2, tree, sizes);
 
-            tree.put(author1, root2); // La racine de author2 devient le parent de author1
-            sizes.put(root2, sizes.get(root2) + 1); // La communauté s'agrandit d'une personne
+            tree.put(author1, root2);
+            sizes.put(root2, sizes.get(root2) + 1);
 
             return;
         }
@@ -449,22 +490,22 @@ public class DblpParsingDemo {
             int size1 = sizes.get(root1);
             int size2 = sizes.get(root2);
 
-            // Optimisation (Union par taille) : on accroche l'arbre le plus petit sous la racine du plus grand.
+            // On accroche l'arbre le plus petit sous la racine du plus grand.
             if (size1 >= size2) {
-                tree.put(root2, root1); // La racine 2 est subordonnée à la racine 1
-                sizes.put(root1, size1 + size2); // La nouvelle racine globale (root1) prend la somme des deux tailles
-                sizes.remove(root2); // La racine 2 n'est plus une racine principale, on retire son entrée des tailles
+                tree.put(root2, root1);
+                sizes.put(root1, size1 + size2);
+                sizes.remove(root2);
             } else {
-                tree.put(root1, root2); // La racine 1 est subordonnée à la racine 2
-                sizes.put(root2, size1 + size2); // La nouvelle racine globale (root2) prend la somme des deux tailles
-                sizes.remove(root1); // La racine 1 n'est plus une racine principale, on retire son entrée des tailles
+                tree.put(root1, root2);
+                sizes.put(root2, size1 + size2);
+                sizes.remove(root1);
             }
         }
     }
 
     public static void exporterCSV(HashMap<String, Integer> tailles) throws IOException {
         PrintWriter writer = new PrintWriter(new File("data.csv"));
-        writer.println("Auteur,NbCollaborations"); // Entête attendue par ton script
+        writer.println("Auteur,NbCollaborations");
 
         // Trier les racines par taille décroissante et prendre les 10 premières
         tailles.entrySet().stream()
