@@ -149,41 +149,110 @@ public class DblpParsingDemo {
                             continue;
                         }
 
-                        for (String other : others) {
-                            if (!relations.containsKey(author1)) {
-                                HashMap<String, Integer> relationWithAuthor = new HashMap<>();
-                                relationWithAuthor.put(other, 1);
-                                relations.put(author1, relationWithAuthor);
-                            } else {
-                                HashMap<String, Integer> relationsAuthor1 = relations.get(author1);
-                                int value = relationsAuthor1.getOrDefault(other, 0);
-                                relationsAuthor1.put(other, value+1);
-                            }
-                        }
+                        getRelations(author1, others, relations);
                     }
-                    relations.values().forEach(voisins -> voisins.entrySet().removeIf(entry -> entry.getValue() < 6));
-                    relations.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+                    removeRelationsWithNotEnoughAuthors(relations);
+                    HashMap<String, List<String>> graph = createGraph(relations);
 
-                    HashMap<String, List<String>> graph = new HashMap<>();
+                    List<List<String>> result = kosarajuSharir(graph);
+                    List<List<String>> resultTop10 = result.stream().sorted(Comparator.comparingInt(List::size)).limit(10).toList();
 
-                    for (Map.Entry<String, HashMap<String, Integer>> entry : relations.entrySet()) {
-                        String A = entry.getKey();
-                        graph.putIfAbsent(A, new ArrayList<>());
-
-                        for (String B : entry.getValue().keySet()) {
-                            graph.get(A).add(B);
-                        }
+                    for (List<String> community : resultTop10) {
+                        int taille = community.size();
+                        int diametre = calculerDiametre(community, graph);
                     }
-                    List<List<String>> result = kosaraju(graph);
-                    System.out.println(result);
                 }
         }
     }
 
-    public static void fillOrder(String author, Set<String> alreadyVisited, Stack<String> stack, HashMap<String, List<String>> graph) {
+    /**
+     * Méthode qui nous permet de mettre les relations entre les auteurs des différentes publications dans notre structure de données "relations". Ceci se fait de manière "online".
+     * @param author1 auteur principal de la publication.
+     * @param othersAuthors autres auteurs de la publication.
+     * @param relations notre structure de données.
+     */
+    public static void getRelations(String author1, List<String> othersAuthors, HashMap<String, HashMap<String, Integer>> relations) {
+        for (String other : othersAuthors) {
+            if (!relations.containsKey(author1)) {
+                HashMap<String, Integer> relationWithAuthor = new HashMap<>();
+                relationWithAuthor.put(other, 1);
+                relations.put(author1, relationWithAuthor);
+            } else {
+                HashMap<String, Integer> relationsAuthor1 = relations.get(author1);
+                int value = relationsAuthor1.getOrDefault(other, 0);
+                relationsAuthor1.put(other, value+1);
+            }
+        }
+    }
+
+    /**
+     * Méthode qui nous permet de retirer les relations avec les auteurs qui sont apparues moins que 6 fois.
+     * @param relations notre structure de données.
+     */
+    public static void removeRelationsWithNotEnoughAuthors(HashMap<String, HashMap<String, Integer>> relations) {
+        relations.values().forEach(voisins -> voisins.entrySet().removeIf(entry -> entry.getValue() < 6));
+        relations.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+    }
+
+    /**
+     * Méthode qui nous de transformer notre sd "relations" en une liste d'adjacence.
+     * @param relations notre structure de données.
+     * @return la structure de données "graph".
+     */
+    public static HashMap<String, List<String>> createGraph(HashMap<String, HashMap<String, Integer>> relations) {
+        HashMap<String, List<String>> graph = new HashMap<>();
+
+        for (Map.Entry<String, HashMap<String, Integer>> entry : relations.entrySet()) {
+            String A = entry.getKey();
+            graph.putIfAbsent(A, new ArrayList<>());
+
+            for (String B : entry.getValue().keySet()) {
+                graph.get(A).add(B);
+            }
+        }
+        return graph;
+    }
+
+    /**
+     * Méthode qui nous permet d'effectuer l'algorithme Kosaraju-Sharir.
+     * @param graph notre stucture de données.
+     * @return la liste de différentes communautés existantes dans une structure de données.
+     */
+    public static List<List<String>> kosarajuSharir(HashMap<String, List<String>> graph) {
+        Deque<String> deque = new ArrayDeque<>();
+        Set<String> visited = new HashSet<>();
+
+        //dfs sur tous les auteurs
+        for (String node : graph.keySet()) {
+            if (!visited.contains(node)) {
+                fillOrder(node, visited, deque, graph);
+            }
+        }
+
+        //Inversion du graphe
+        HashMap<String, List<String>> reversed = reverseGraph(graph);
+
+        visited.clear();
+        List<List<String>> sccs = new ArrayList<>();
+
+        while (!deque.isEmpty()) {
+            String node = deque.pop();
+
+            if (!visited.contains(node)) {
+                List<String> component = new ArrayList<>();
+                dfs(node, visited, reversed, component);
+                sccs.add(component);
+            }
+        }
+        //On retire les communautés de taille 1 pour plus de visibilité
+        sccs.removeIf(scc -> scc.size() == 1);
+        return sccs;
+    }
+
+    public static void fillOrder(String author, Set<String> alreadyVisited, Deque<String> stack, HashMap<String, List<String>> graph) {
         alreadyVisited.add(author);
 
-        // regarde les voisins de l'auteur pour continuer le dfs récursivement
+        // regarde les voisins de l'auteur pour continuer le dfs récursivement (si pas de voisins retourne une liste vide)
         for (String s : graph.getOrDefault(author, List.of())) {
             if (!alreadyVisited.contains(s)) {
                 fillOrder(s, alreadyVisited, stack, graph);
@@ -193,6 +262,11 @@ public class DblpParsingDemo {
         stack.push(author);
     }
 
+    /**
+     * Méthode qui permet d'inverser les arcs du graphe.
+     * @param graph le graphe à inverser.
+     * @return le graphe inversé.
+     */
     public static HashMap<String, List<String>> reverseGraph(HashMap<String, List<String>> graph) {
         HashMap<String, List<String>> reversed = new HashMap<>();
 
@@ -222,35 +296,40 @@ public class DblpParsingDemo {
         }
     }
 
-    public static List<List<String>> kosaraju(HashMap<String, List<String>> graph) {
+    public static int calculerDiametre(List<String> communaute, HashMap<String, List<String>> graph) {
+        int maxDiametre = 0;
+        // On transforme la liste en Set pour une recherche en O(1)
+        Set<String> membres = new HashSet<>(communaute);
 
-        Stack<String> stack = new Stack<>();
-        Set<String> visited = new HashSet<>();
+        for (String depart : communaute) {
+            int d = bfsDistanceMax(depart, membres, graph);
+            maxDiametre = Math.max(maxDiametre, d);
+        }
+        return maxDiametre;
+    }
 
-        //dfs sur tous les auteurs
-        for (String node : graph.keySet()) {
-            if (!visited.contains(node)) {
-                fillOrder(node, visited, stack, graph);
+    private static int bfsDistanceMax(String depart, Set<String> membres, HashMap<String, List<String>> graph) {
+        Queue<String> file = new LinkedList<>();
+        Map<String, Integer> distances = new HashMap<>();
+
+        file.add(depart);
+        distances.put(depart, 0);
+        int distMax = 0;
+
+        while (!file.isEmpty()) {
+            String u = file.poll();
+            int d = distances.get(u);
+            distMax = Math.max(distMax, d);
+
+            for (String v : graph.getOrDefault(u, List.of())) {
+                // CRUCIAL : On ne sort pas de la communauté
+                if (membres.contains(v) && !distances.containsKey(v)) {
+                    distances.put(v, d + 1);
+                    file.add(v);
+                }
             }
         }
-
-        HashMap<String, List<String>> reversed = reverseGraph(graph);
-
-        visited.clear();
-        List<List<String>> sccs = new ArrayList<>();
-
-        while (!stack.isEmpty()) {
-            String node = stack.pop();
-
-            if (!visited.contains(node)) {
-                List<String> component = new ArrayList<>();
-                dfs(node, visited, reversed, component);
-                sccs.add(component);
-            }
-        }
-        //Permet de retirer les communautés de taille 1 pour plus de visibilité
-        sccs.removeIf(scc -> scc.size() == 1);
-        return sccs;
+        return distMax;
     }
 
     public static String find(String i, HashMap<String, String> tree, HashMap<String, Integer> sizes) {
