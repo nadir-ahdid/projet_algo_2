@@ -185,12 +185,7 @@ public class DblpParsingDemo {
                             .limit(10)
                             .toList();
 
-                    for (List<String> community : resultTop10) {
-                        int taille = community.size();
-                        int diametre = calculerDiametre(community, graph);
-                        System.out.println(taille);
-                        System.out.println(diametre);
-                    }
+                    exporterCSVTache2(result, resultTop10, graph);
                 }
         }
     }
@@ -514,5 +509,36 @@ public class DblpParsingDemo {
                 .forEach(e -> writer.println(e.getKey() + "," + e.getValue()));
 
         writer.close();
+    }
+
+    /**
+     * Exporte les résultats de la Tâche 2 (Kosaraju) dans deux fichiers CSV pour l'affichage graphique.
+     */
+    public static void exporterCSVTache2(List<List<String>> toutesCommunautes, List<List<String>> resultTop10, HashMap<String, List<String>> graph) throws IOException {
+
+        // 1. Export des tailles de TOUTES les communautés (pour l'histogramme global)
+        PrintWriter writerToutes = new PrintWriter(new File("tailles_toutes_tache2.csv"));
+        writerToutes.println("Taille");
+        for (List<String> comm : toutesCommunautes) {
+            writerToutes.println(comm.size());
+        }
+        writerToutes.close();
+
+        // 2. Export du Top 10 avec Taille, Diamètre et Noms des Auteurs
+        PrintWriter writerTop10 = new PrintWriter(new File("top10_tache2.csv"));
+        writerTop10.println("Communaute,Taille,Diametre,Auteurs");
+        int id = 1;
+        for (List<String> community : resultTop10) {
+            int taille = community.size();
+            int diametre = calculerDiametre(community, graph);
+
+            // On relie les auteurs avec un " | " pour éviter de casser les colonnes du CSV avec les virgules des noms
+            String auteurs = String.join(" | ", community);
+
+            writerTop10.println("Communaute_" + id + "," + taille + "," + diametre + ",\"" + auteurs + "\"");
+            id++;
+        }
+        writerTop10.close();
+        System.out.println("Exportation des fichiers de la Tâche 2 terminée !");
     }
 }
