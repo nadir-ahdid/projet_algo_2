@@ -7,7 +7,8 @@ Ce projet porte sur l'analyse de la base de données DBLP afin d'y identifier de
 Les fichiers se trouvent principalement dans le répertoire `src/` :
 
 - `DblpParsingDemo.java` : Le programme principal contenant l'implémentation des Tâches 1 (Détection par co-publication via algorithme Union-Find) et 2 (Communautés orientées via l'algorithme de Kosaraju).
-- `script.py` : Script Python correspondant à la tâche bonus. Il génère un graphique interactif permettant de visualiser les tailles des plus grandes communautés.
+- `script.py` : Script Python générant un histogramme interactif de la taille des communautés de la Tâche 1.
+- `script2.py` : Script Python générant un histogramme interactif de la taille des communautés de la Tâche 2.
 
 ## Comment compiler le projet
 
@@ -21,7 +22,7 @@ javac DblpPublicationGenerator.java DblpParsingDemo.java
 ## Comment exécuter le programme
 
 Le programme requiert 3 arguments obligatoires et 1 argument optionnel sous la syntaxe :
-`java -Xmx2g DblpParsingDemo <chemin_xml> <chemin_dtd> <tâche> [--limit=N]`
+`java DblpParsingDemo <chemin_xml> <chemin_dtd> <tâche> [--limit=N]`
 
 - `<chemin_xml>` : Le chemin vers le fichier de données (ex: `dblp-2026-01-01.xml.gz`).
 - `<chemin_dtd>` : Le chemin vers le fichier `dblp.dtd`.
@@ -40,18 +41,38 @@ Exécuter la tâche 2 en se limitant aux 500 000 premières publications :
 java DblpParsingDemo dblp-2026-01-01.xml.gz dblp.dtd 2 --limit=500000
 ```
 
-### Exécution de la Tâche Bonus
-Pour lancer l'analyse graphique des données avec Python, exécutez (assurez-vous d'avoir fait tourner la tâche 1 au préalable et d'avoir installé les librairies `pandas` et `plotly`) :
+### Génération des histogrammes (Scripts Python)
+À faire obligatoirement avant de générer les histogrammes
+Pour Mac :
 ```bash
-python script.py
+python3 -m pip install pandas
+python3 -m pip install plotly
+```
+Pour Windows :
+```bash
+pip install pandas
+pip install plotly
+```
+Pour lancer l'analyse graphique et afficher les histogrammes requis (nécessite d'avoir exécuté les tâches correspondantes au préalable pour générer `data.csv` et `data2.csv`, ainsi que les librairies `pandas` et `plotly`) :
+
+Pour Mac :
+```bash
+python3 script.py   # Affiche l'histogramme pour la Tâche 1
+python3 script2.py  # Affiche l'histogramme pour la Tâche 2
+```
+Pour Windows
+```bash
+python script.py   # Affiche l'histogramme pour la Tâche 1
+python script2.py  # Affiche l'histogramme pour la Tâche 2
 ```
 
 ## Fichiers de sortie produits
 
-- **Tâche 1 :** 
-  - Produit un affichage standard (dans la console) toutes les 10 000 publications traitées pour démontrer le suivi *online*, ainsi qu'un affichage de synthèse à la fin.
-  - **`data.csv`** : Génère ce fichier dans le dossier d'exécution (la racine depuis laquelle la commande Java a été lancée). Il contient la liste des 10 plus grandes communautés avec le nom de leur représentant et leur taille.
-- **Tâche 2 :** 
-  - Produit l'affichage à l'écran (console) des composantes fortement connexes trouvées à l'issue de l'algorithme de Kosaraju sur le graphe épuré.
-- **Tâche Bonus (`script.py`) :** 
-  - Lit en entrée le fichier `data.csv`. Il ne produit pas de fichier permanent, mais génère et ouvre un rendu visuel HTML temporaire dans le navigateur Web par défaut.
+- **Tâche 1 :**
+  - Produit un affichage standard (dans la console) toutes les 500 000 publications traitées pour démontrer le suivi *online* (nombre total de communautés et le top 10 des plus grandes).
+  - **`data.csv`** : Génère ce fichier dans le dossier d'exécution. Il contient la liste complète de toutes les communautés et de leur taille (sert de base pour le premier histogramme).
+- **Tâche 2 :**
+  - Produit un affichage à l'écran (console) des 10 plus grandes communautés fortement connexes trouvées (avec leur taille, leur diamètre et la liste complète de leurs auteurs).
+  - **`data2.csv`** : Génère ce fichier contenant uniquement les tailles de l'ensemble des communautés (sert de base pour le second histogramme).
+- **Scripts Python (`script.py` et `script2.py`) :**
+  - Lisent respectivement `data.csv` et `data2.csv`. Ils ne produisent pas de fichier permanent, mais génèrent et ouvrent un rendu visuel HTML (histogrammes) temporaire dans le navigateur Web par défaut.
