@@ -43,6 +43,7 @@ java DblpParsingDemo dblp-2026-01-01.xml.gz dblp.dtd 2 --limit=500000
 
 ### Génération des histogrammes (Scripts Python)
 À faire obligatoirement avant de générer les histogrammes
+
 Pour Mac :
 ```bash
 python3 -m pip install pandas
