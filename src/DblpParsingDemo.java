@@ -62,7 +62,7 @@ public class DblpParsingDemo {
         if (limit != Long.MAX_VALUE) System.out.println("Limit: " + limit);
 
         switch (choice) {
-            case "1":
+            case "1" -> {
                 long pubCount = 0;
                 long count = 0; // Compteur local pour déclencher un affichage périodique
                 // Structures de données pour gérer l'algorithme Union-Find
@@ -87,7 +87,7 @@ public class DblpParsingDemo {
                     while (pubCount < limit) {
                         // Toutes les 10 000 opérations de traitement de co-auteurs,
                         // on affiche des statistiques en temps réel pour suivre l'évolution.
-                        if (count == 10000) {
+                        if (count == 500000) {
                             System.out.println("Le nombre de communautés est de " + sizes.size());
                             // Trie les communautés par taille décroissante et affiche les 10 plus grandes
                             sizes.entrySet().stream()
@@ -137,10 +137,11 @@ public class DblpParsingDemo {
                         }
                         count++; // On incrémente le compteur de traitements pour l'affichage périodique
                     }
-                    // À la toute fin du traitement, on sauvegarde les résultats dans un fichier CSV.
-                    exporterCSV(sizes);
+                    // À la toute fin du traitement, on sauvegarde les résultats dans un fichier CSV qui sera utiliser pour l'histogramme.
+                    exporterCSV1(sizes);
                 }
-            case "2":
+            }
+            case "2" -> {
                 long pubCount2 = 0;
                 HashMap<String, HashMap<String, Integer>> relations = new HashMap<>();
                 try (DblpPublicationGenerator gen = new DblpPublicationGenerator(xmlPath, dtdPath, 256)) {
@@ -179,6 +180,8 @@ public class DblpParsingDemo {
 
                     List<List<String>> result = kosarajuSharir(graph);
 
+                    exporterCSV2(result);
+
                     // Permet de récupérer les 10 premières communautés
                     List<List<String>> resultTop10 = result.stream()
                             .sorted((l1, l2) -> Integer.compare(l2.size(), l1.size()))
@@ -186,17 +189,26 @@ public class DblpParsingDemo {
                             .toList();
 
                     for (List<String> community : resultTop10) {
-                        int taille = community.size();
-                        int diametre = calculerDiametre(community, graph);
-                        System.out.println(taille);
-                        System.out.println(diametre);
+                        int size = community.size();
+                        int diameter = calculateDiameter(community, graph);
+                        System.out.println("==================================");
+                        System.out.println("Taille : " + size);
+                        System.out.println("Diamètre : " + diameter);
+                        System.out.println("Auteurs :");
+
+                        for (String author : community) {
+                            System.out.println("- " + author);
+                        }
+
                     }
                 }
+            }
         }
     }
 
     /**
      * Méthode qui nous permet de mettre les relations entre les auteurs des différentes publications dans notre structure de données "relations". Ceci se fait de manière "online".
+     *
      * @param author1 auteur principal de la publication.
      * @param othersAuthors autres auteurs de la publication.
      * @param relations notre structure de données.
@@ -217,6 +229,7 @@ public class DblpParsingDemo {
 
     /**
      * Méthode qui nous permet de retirer les relations avec les auteurs qui sont apparues moins que 6 fois.
+     *
      * @param relations notre structure de données.
      */
     public static void removeRelationsWithNotEnoughAuthors(HashMap<String, HashMap<String, Integer>> relations) {
@@ -226,6 +239,7 @@ public class DblpParsingDemo {
 
     /**
      * Méthode qui nous de transformer notre sd "relations" en une liste d'adjacence.
+     *
      * @param relations notre structure de données.
      * @return la structure de données "graph".
      */
@@ -245,6 +259,7 @@ public class DblpParsingDemo {
 
     /**
      * Méthode qui nous permet d'effectuer l'algorithme Kosaraju-Sharir.
+     *
      * @param graph notre stucture de données.
      * @return la liste de différentes communautés existantes dans une structure de données.
      */
@@ -252,32 +267,32 @@ public class DblpParsingDemo {
         Deque<String> deque = new ArrayDeque<>();
         Set<String> visited = new HashSet<>();
 
-        //dfs sur tous les auteurs
+        //dfs sur tous les auteurs pour créer l'ordre
         for (String node : graph.keySet()) {
             if (!visited.contains(node)) {
                 fillOrder(node, visited, deque, graph);
             }
         }
 
-        //Inversion du graphe
+        //Inversion des arêtes du graphe
         HashMap<String, List<String>> reversed = reverseGraph(graph);
 
         visited.clear();
-        List<List<String>> sccs = new ArrayList<>();
+        List<List<String>> cfcs = new ArrayList<>();
 
-        //On refait un dfs mais pour le graphe inversé. Ce qui permet de savoir s'il y a à la fois une relation auteur1 -> auteur2 et auteur2 -> auteur1.
+        //On refait un dfs mais pour le graphe inversé. Ce qui permet de détecter les composantes fortements connexes.
         while (!deque.isEmpty()) {
             String node = deque.pop();
 
             if (!visited.contains(node)) {
-                List<String> component = new ArrayList<>();
-                dfs(node, visited, reversed, component);
-                sccs.add(component);
+                List<String> cfc = new ArrayList<>();
+                dfs(node, visited, reversed, cfc);
+                cfcs.add(cfc);
             }
         }
         //On retire les communautés de taille 1 pour plus de visibilité
-        sccs.removeIf(scc -> scc.size() == 1);
-        return sccs;
+        cfcs.removeIf(scc -> scc.size() == 1);
+        return cfcs;
     }
 
 
@@ -328,18 +343,18 @@ public class DblpParsingDemo {
      * @param node      Le sommet actuel du parcours.
      * @param visited   Ensemble des sommets déjà visités.
      * @param graph     Le graphe orienté inversé à parcourir.
-     * @param component Liste collectant les membres de la composante fortement connexe.
+     * @param cfc Liste collectant les membres de la composante fortement connexe.
      */
     public static void dfs(String node, Set<String> visited,
                            HashMap<String, List<String>> graph,
-                           List<String> component) {
+                           List<String> cfc) {
 
         visited.add(node);
-        component.add(node);
+        cfc.add(node);
 
         for (String neighbor : graph.getOrDefault(node, List.of())) {
             if (!visited.contains(neighbor)) {
-                dfs(neighbor, visited, graph, component);
+                dfs(neighbor, visited, graph, cfc);
             }
         }
     }
@@ -347,17 +362,17 @@ public class DblpParsingDemo {
     /**
      * Calcule le diamètre d'une communauté spécifique.
      *
-     * @param communaute Liste des noms des auteurs de la communauté
+     * @param communauty Liste des noms des auteurs de la communauté
      * @param graph      Le graphe orienté.
      * @return La valeur du diamètre qui correspond au nombre d'arêtes du chemin le plus long
      */
-    public static int calculerDiametre(List<String> communaute, HashMap<String, List<String>> graph) {
+    public static int calculateDiameter(List<String> communauty, HashMap<String, List<String>> graph) {
         int maxDiametre = 0;
         // On transforme la liste en Set pour une recherche en O(1)
-        Set<String> membres = new HashSet<>(communaute);
+        Set<String> authors = new HashSet<>(communauty);
 
-        for (String depart : communaute) {
-            int d = bfsDistanceMax(depart, membres, graph);
+        for (String beginning : communauty) {
+            int d = bfsDistanceMax(beginning, authors, graph);
             maxDiametre = Math.max(maxDiametre, d);
         }
         return maxDiametre;
@@ -366,17 +381,17 @@ public class DblpParsingDemo {
     /**
      * Réalise un parcours BFS pour trouver la distance maximale entre un auteur et un autre de la communauté.
      *
-     * @param depart  L'auteur actuel pour le calcul des distances.
-     * @param membres L'ensemble des membres de la communauté.
+     * @param beginning  L'auteur actuel pour le calcul des distances.
+     * @param authors L'ensemble des membres de la communauté.
      * @param graph   Le graphe orienté.
      * @return La distance maximale trouvée depuis un auteur vers un autre auteur de la communauté.
      */
-    private static int bfsDistanceMax(String depart, Set<String> membres, HashMap<String, List<String>> graph) {
+    private static int bfsDistanceMax(String beginning, Set<String> authors, HashMap<String, List<String>> graph) {
         Queue<String> file = new LinkedList<>();
         Map<String, Integer> distances = new HashMap<>();
 
-        file.add(depart);
-        distances.put(depart, 0);
+        file.add(beginning);
+        distances.put(beginning, 0);
         int distMax = 0;
 
         while (!file.isEmpty()) {
@@ -384,9 +399,9 @@ public class DblpParsingDemo {
             int d = distances.get(u);
             distMax = Math.max(distMax, d);
 
-            //Renvoie une liste vide si on ne trouve pas l'auteur dans le graphe sinon il y a une erreur
+            //Renvoie une liste vide si on ne trouve pas l'auteur dans le graphe sinon il y a une erreur sinon augmente la distance de 1
             for (String v : graph.getOrDefault(u, List.of())) {
-                if (membres.contains(v) && !distances.containsKey(v)) {
+                if (authors.contains(v) && !distances.containsKey(v)) {
                     distances.put(v, d+1);
                     file.add(v);
                 }
@@ -398,12 +413,10 @@ public class DblpParsingDemo {
     /**
      * Recherche le représentant (la racine) de la communauté à laquelle appartient un auteur.
      * Si l'auteur n'existe pas encore dans la structure, il est créé en tant que racine de sa propre communauté.
-     * <p>
      * Cette méthode implémente une optimisation d'aplatissement appelée "Compression de chemin"
      * (Path Compression). Lorsqu'on cherche la racine pour un auteur, on met à jour son parent
      * pour qu'il pointe directement vers cette racine. Cela accélère considérablement les
      * prochaines recherches pour cet auteur.
-     * </p>
      *
      * @param i     Le nom de l'auteur dont on cherche la communauté.
      * @param tree  La structure Union-Find représentant l'arbre des parents (clé : auteur, valeur : parent).
@@ -441,12 +454,10 @@ public class DblpParsingDemo {
 
     /**
      * Fusionne les ensembles (communautés) de deux auteurs en utilisant la structure de données Union-Find.
-     * <p>
      * Cette méthode implémente l'optimisation "Union par taille" (Union by size).
      * Lorsqu'elle relie deux ensembles existants, elle attache toujours la racine
      * de l'arbre le plus petit à la racine de l'arbre le plus grand. Cela permet de
      * garder des arbres peu profonds et d'optimiser les futures opérations de recherche.
-     * </p>
      *
      * @param author1 Le nom du premier auteur.
      * @param author2 Le nom du deuxième auteur (le collaborateur).
@@ -503,15 +514,25 @@ public class DblpParsingDemo {
         }
     }
 
-    public static void exporterCSV(HashMap<String, Integer> tailles) throws IOException {
+    public static void exporterCSV1(HashMap<String, Integer> sizes) throws IOException {
         PrintWriter writer = new PrintWriter(new File("data.csv"));
-        writer.println("Auteur,NbCollaborations");
+        writer.println("Nom de la communauté, Taille de la communauté");
 
-        // Trier les racines par taille décroissante et prendre les 10 premières
-        tailles.entrySet().stream()
+        // Permet de trier les racines par taille décroissante
+        sizes.entrySet().stream()
                 .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-                .limit(10)
                 .forEach(e -> writer.println(e.getKey() + "," + e.getValue()));
+
+        writer.close();
+    }
+
+    public static void exporterCSV2(List<List<String>> communities) throws IOException {
+        PrintWriter writer = new PrintWriter(new File("data2.csv"));
+        writer.println("taille");
+
+        for (List<String> community : communities) {
+            writer.println(community.size());
+        }
 
         writer.close();
     }
